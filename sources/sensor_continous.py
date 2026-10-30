@@ -1,38 +1,55 @@
 import socket
 import struct
+import time
 
 MULTICAST_GROUP = "239.255.255.250"
 MULTICAST_PORT = 5007
 GATEWAY_RESPONSE_PORT = 5008
+GATEWAY_DATA_PORT = 7000
 
 
-def iniciar_fonte():
-    print("[Fonte] Sensor/Atuador ligado e aguardando descoberta...")
+def executar_sensor():
+    # 1. Escuta o chamado de descoberta Multicast do Gateway
+    sock_desc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock_desc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock_desc.bind(("", MULTICAST_PORT))
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    # Vincula à porta do multicast em todas as interfaces locais
-    sock.bind(("", MULTICAST_PORT))
-
-    # Força a entrada no grupo multicast usando o endereço local 127.0.0.1
+    # Configura o grupo multicast no loopback (para Arch Linux / ambiente local)
     mreq = socket.inet_aton(MULTICAST_GROUP) + socket.inet_aton("127.0.0.1")
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+    sock_desc.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
-    while True:
-        dados, endereco_origem = sock.recvfrom(1024)
-        gateway_ip = "127.0.0.1"  # Forçamos o envio para o localhost com segurança
+    print("[Fonte] Sensor Continuo ligado e aguardando descoberta...")
+    dados, endereco_origem = sock_desc.recvfrom(1024)
+    gateway_ip = endereco_origem[0]
 
-        print(
-            f"[Fonte] Chamado recebido! Respondendo para o Gateway em {gateway_ip}:{GATEWAY_RESPONSE_PORT}..."
-        )
+    print(
+        f"[Fonte] Chamado recebido de {gateway_ip}! Enviando cracha de identificacao..."
+    )
 
-        resposta_cracha = (
-            b"ID: sensor_temp_01 | TYPE: temperatura | PORT: 6001 | CONTROLABLE: False"
-        )
-        sock.sendto(resposta_cracha, (gateway_ip, GATEWAY_RESPONSE_PORT))
-        break
+    # 2. Envia o crachá de resposta para o Gateway
+    cracha = b"ID: sensor_continuo_01 | TYPE: continuo | STATUS: Ativo"
+    sock_desc.sendto(cracha, (gateway_ip, GATEWAY_RESPONSE_PORT))
+    sock_desc.close()
+
+    # 3. Entra no loop contínuo de envio de dados para o Gateway
+    sock_dados = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    print("[Fonte] Descoberta concluida. Iniciando envio continuo de telemetria...")
+
+    try:
+        contador = 1
+        while True:
+            mensagem = f"ID: sensor_continuo_01 | LEITURA: {22.5 + (contador % 5)}C"
+            sock_dados.sendto(mensagem.encode("utf-8"), (gateway_ip, GATEWAY_DATA_PORT))
+            print(f"[Enviado] {mensagem}")
+
+            contador += 1
+            time.sleep(3)  # Envia a cada 3 segundos
+
+    except KeyboardInterrupt:
+        print("\n[Fonte] Sensor encerrado pelo usuario.")
+    finally:
+        sock_dados.close()
 
 
 if __name__ == "__main__":
-    iniciar_fonte()
+    executar_sensor()
