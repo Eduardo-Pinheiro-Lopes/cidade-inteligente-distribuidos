@@ -1,0 +1,77 @@
+import socket
+import struct
+import time
+import random
+
+MULTICAST_GROUP = "239.255.255.250"
+MULTICAST_PORT = 5007
+GATEWAY_RESPONSE_PORT = 5008
+UDP_DATA_PORT = 6002  # Porta onde o Gateway vai escutar os dados deste sensor
+
+
+def executar_sensor_alerta():
+    print("[Sensor Alerta] Iniciando sensor com limiar de evento...")
+
+    # 1. Socket para participar da descoberta via Multicast
+    sock_desc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock_desc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock_desc.bind(("", MULTICAST_PORT))
+
+    mreq = socket.inet_aton(MULTICAST_GROUP) + socket.inet_aton("127.0.0.1")
+    sock_desc.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+    print("[Sensor Alerta] Aguardando chamado de descoberta do Gateway...")
+    dados, endereco_origem = sock_desc.recvfrom(1024)
+    gateway_ip = "127.0.0.1"
+
+    print(f"[Sensor Alerta] Chamado recebido! Enviando crachá de identificação...")
+
+    # Responde ao Gateway informando que é um sensor com alerta
+    cracha = b"ID: sensor_ruido_02 | TYPE: ruido | PORT: 6002 | CONTROLABLE: False"
+    sock_desc.sendto(cracha, (gateway_ip, GATEWAY_RESPONSE_PORT))
+    sock_desc.close()  # Fecha o socket de descoberta, pois já foi descoberto
+
+    # 2. Socket UDP para envio contínuo de dados e alertas para o Gateway
+    sock_dados = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    print(
+        "[Sensor Alerta] Iniciando envio contínuo de leituras e simulação de picos..."
+    )
+
+    try:
+        while True:
+            # Simula a leitura de um sensor (ex: nível de ruído em decibéis)
+            valor_medido = random.uniform(40.0, 95.0)
+            is_alert = False
+
+            # Condição de Evento Crítico (ex: se o ruído passar de 85 dB, é um alerta imediato!)
+            if valor_medido > 85.0:
+                is_alert = True
+                print(
+                    f"[ALERTA!] Limiar ultrapassado! Valor crítico detectado: {valor_medido:.2f} dB"
+                )
+
+            # Formata a mensagem de dados (no futuro usaremos o Protobuf SensorReadingMessage)
+            mensagem_dados = f"ID: sensor_ruido_02 | VALOR: {valor_medido:.2f} | ALERTA: {is_alert}".encode(
+                "utf-8"
+            )
+
+            # Envia o pacote UDP para o Gateway
+            sock_dados.sendto(
+                mensagem_dados, (gateway_ip, 7000)
+            )  # Porta de dados do Gateway
+
+            if is_alert:
+                # Se for alerta, espera menos tempo ou envia imediatamente outro pacote se necessário
+                time.sleep(2)
+            else:
+                # Envio periódico normal (ex: a cada 5 segundos)
+                time.sleep(5)
+
+    except KeyboardInterrupt:
+        print("\n[Sensor Alerta] Sensor desligado.")
+        sock_dados.close()
+
+
+if __name__ == "__main__":
+    executar_sensor_alerta()

@@ -1,0 +1,32 @@
+syntax = "proto3";
+package iotsystem;
+
+message SensorReadingMessage{
+  string id_sensor = 1
+  string id_type =2 //temperatura, dB, semaforo/poste
+  float value = 3 //valor
+  int64 time = 4 //horario da chacagem
+  bool alert = 5
+}
+
+message DiscoveryMessage {
+    string source_id = 1;     
+    string source_type = 2;   
+    string ip_address = 3;    // IP onde a fonte está rodando
+    int32 port = 4;           // porta de comunicação
+    bool is_controllable = 5; // diz se aceita comandos gRPC ou se é só envio UDP
+}
+
+message ControlCommandRequest {
+    string command_id = 1;    // ex: "LIGAR", "DESLIGAR", "MUDAR_INTENSIDADE"
+    int32 parameter_value = 2;// valor do parâmetro (ex: intensidade de 0 a 100)
+}
+
+message ControlCommandResponse {
+    bool success = 1;         
+    string message = 2;       // mensagem descritiva do estado atual
+}
+
+service ControllableSourceService {
+    rpc ExecuteCommand (ControlCommandRequest) returns (ControlCommandResponse);
+}
